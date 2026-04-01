@@ -66,6 +66,7 @@ services:
       dockerfile: Dockerfile
     command: >
       sh -c "python scripts/wait_for_http.py http://qdrant:6333/healthz &&
+      alembic upgrade head &&
       uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     ports:
       - "8000:8000"
