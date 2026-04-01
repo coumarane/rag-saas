@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c ':*)",
+      "Bash(pip install:*)",
+      "Bash(python -m pytest tests/unit/ -v --tb=short)",
+      "Bash(/Users/coumaranecouppane/miniconda3/bin/pip install:*)",
+      "Bash(/Users/coumaranecouppane/miniconda3/bin/python -m pytest tests/unit/ -v --tb=short)",
+      "Bash(python -m pytest tests/integration/test_retrieval.py -v)",
+      "Bash(python3.11 -c \"import qdrant_client; print\\('ok'\\)\")",
+      "Bash(python -c \"import sys; print\\(sys.executable, sys.version\\)\")",
+      "Bash(/opt/homebrew/bin/python3.11 -m pytest tests/integration/test_retrieval.py -v)",
+      "Bash(python -c \"import qdrant_client; import sentence_transformers; print\\('both ok'\\)\")",
+      "Bash(python -m pytest tests/unit/ -v)",
+      "Bash(npx --version)",
+      "Bash(npx create-next-app@latest frontend --typescript --tailwind --app --src-dir=false --no-eslint --import-alias \"@/*\" --yes)",
+      "Bash(npx shadcn@latest init --yes --defaults)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run:*)"
+    ],
+    "additionalDirectories": [
+      "/Users/coumaranecouppane/Dev/rag-saas/frontend/app/chat"
+    ]
+  }
+}
