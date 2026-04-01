@@ -1,0 +1,132 @@
+Read CLAUDE.md fully before doing anything else. That file is your 
+complete specification, architecture, and rules for this project.
+
+Now build the Phase 1 MVP following CLAUDE.md exactly. Work in this order:
+
+STEP 1 — Infrastructure & Config
+- Create docker-compose.yml with: postgres, redis, qdrant, minio, api, worker, flower
+- Create .env.example with all variables from CLAUDE.md
+- Create backend/pyproject.toml with all dependencies listed in CLAUDE.md
+- Create backend/app/core/config.py using pydantic-settings
+- Create backend/app/core/logging.py using structlog
+- Create backend/app/core/exceptions.py with custom exception classes
+- Create backend/app/main.py (FastAPI app, CORS, routers, lifespan)
+- Create backend/app/api/routes/health.py
+
+Verify: docker-compose up starts all services. FastAPI /health returns 200.
+
+STEP 2 — Database Models & Migrations
+- Create backend/app/models/database.py (async SQLAlchemy engine + Base)
+- Create backend/app/models/document.py (Document + DocumentStatus enum)
+- Create backend/app/models/chunk.py (Chunk model)
+- Create backend/app/models/conversation.py (Conversation + Message models)
+- Setup Alembic: alembic init, configure env.py for async, create initial migration
+- Create backend/app/core/dependencies.py (get_db session dependency)
+
+Verify: alembic upgrade head creates all tables in PostgreSQL.
+
+STEP 3 — Storage & Qdrant Setup
+- Create backend/app/core/storage.py (MinIO/S3 client, upload_file, get_presigned_url)
+- Create backend/app/core/vector_store.py (Qdrant client, create_collection, upsert_chunks, search_dense, search_sparse)
+- Collection: name=rag_chunks, dense 1536 dims cosine, sparse BM25 enabled, payload index on doc_id+tenant_id
+
+Verify: collection created in Qdrant on app startup.
+
+STEP 4 — Ingestion Pipeline
+- Create backend/app/ingestion/parser.py
+  - parse_pdf(file_bytes) → List[{text, page_number, section_title}]
+  - parse_docx(file_bytes) → List[{text, page_number, section_title}]
+  - detect_file_type(file_bytes) using magic bytes
+- Create backend/app/ingestion/chunker.py
+  - chunk_document(pages) → List[ChunkData]
+  - Use 512 token target, 64 overlap, separators from CLAUDE.md
+  - Preserve page_number and section_title in each chunk
+- Create backend/app/ingestion/embedder.py
+  - embed_chunks(chunks) → List[List[float]]
+  - Batch size 100, use text-embedding-3-large, 1536 dims
+  - Retry logic (3 attempts, exponential backoff)
+- Create backend/workers/tasks.py (Celery app + process_document task)
+  - Orchestrate: parse → chunk → embed → upsert Qdrant → save chunks DB → update doc status
+- Create backend/app/api/routes/documents.py
+  - POST /api/documents/upload (multipart, validate type+size, trigger task)
+  - GET /api/documents (list all documents)
+  - GET /api/documents/{doc_id} (single doc with status)
+  - DELETE /api/documents/{doc_id}
+
+Write unit tests for parser, chunker, embedder in tests/unit/
+
+STEP 5 — Retrieval Pipeline
+- Create backend/app/retrieval/searcher.py
+  - dense_search(query_vector, doc_id, top_k=20) → List[ScoredChunk]
+  - sparse_search(query_text, doc_id, top_k=20) → List[ScoredChunk]
+- Create backend/app/retrieval/fusion.py
+  - reciprocal_rank_fusion(dense_results, sparse_results, k=60) → List[ScoredChunk]
+- Create backend/app/retrieval/reranker.py
+  - rerank(query, chunks, top_k=6) → List[ScoredChunk]
+  - Use cross-encoder/ms-marco-MiniLM-L-6-v2 locally
+- Create backend/app/retrieval/pipeline.py
+  - retrieve(question, doc_id) → List[ScoredChunk]
+  - Orchestrate: embed query → dense+sparse search → RRF → rerank
+
+Write integration test: given a doc in Qdrant, retrieve returns relevant chunks.
+
+STEP 6 — Generation Layer
+- Create backend/app/generation/prompts.py
+  - build_system_prompt() → str
+  - build_context_block(chunks) → str
+  - build_full_prompt(question, chunks, history) → List[Message]
+  - Use exact prompt template from CLAUDE.md
+- Create backend/app/generation/memory.py
+  - ConversationMemory class backed by Redis
+  - get_history(conversation_id, last_n=6) → List[Message]
+  - add_message(conversation_id, role, content)
+- Create backend/app/generation/llm.py
+  - stream_answer(prompt_messages) → AsyncGenerator[str, None]
+  - parse_citations(raw_response) → CitationResponse
+  - Use claude-sonnet-4-20250514, temp=0.1, max_tokens=2048
+- Create backend/app/api/routes/chat.py
+  - POST /api/chat/stream → SSE StreamingResponse
+  - Request: {question, doc_id, conversation_id?}
+  - Orchestrate: retrieve → build prompt → stream LLM → parse citations → save messages
+  - POST /api/chat/conversations (create conversation)
+  - GET /api/chat/conversations/{id}/messages
+
+Write integration test: full RAG flow returns grounded answer with citations.
+
+STEP 7 — Frontend
+Initialize Next.js 14 in /frontend:
+  npx create-next-app@latest frontend --typescript --tailwind --app --src-dir=false
+  cd frontend && npx shadcn-ui@latest init
+  Install: @tanstack/react-query ai axios react-dropzone
+
+Build these components:
+- lib/api.ts — typed API client (documents CRUD + chat streaming)
+- hooks/useDocuments.ts — TanStack Query hooks for document list + status polling
+- hooks/useChat.ts — streaming chat hook using Vercel AI SDK
+- components/DocumentUpload.tsx — drag & drop, progress bar, calls upload API
+- components/DocumentList.tsx — table of docs with status badges, delete button
+- components/ChatWindow.tsx — message list + input + send button
+- components/MessageBubble.tsx — user/assistant bubbles, renders citations inline
+- components/CitationPanel.tsx — sidebar showing source excerpt + page on click
+- app/upload/page.tsx — upload page
+- app/documents/page.tsx — documents list page  
+- app/chat/[docId]/page.tsx — chat page, fetch doc info, render ChatWindow
+- app/page.tsx — landing/redirect to /upload
+
+STEP 8 — Docker & Final Wiring
+- Create backend/Dockerfile (multi-stage, python:3.11-slim)
+- Create frontend/Dockerfile (multi-stage, node:20-alpine)
+- Create infra/nginx/nginx.conf (reverse proxy: /api → backend, / → frontend)
+- Update docker-compose.yml to include frontend + nginx
+- Create Makefile with: make dev, make test, make build, make migrate
+- Create README.md with setup instructions (clone → cp .env.example → make dev)
+
+Final verification:
+- docker-compose up → all services green
+- Upload a PDF via UI → status goes pending → processing → ready
+- Ask a question → get streamed answer with citations
+- Run pytest → all tests pass
+
+After each STEP, tell me what was built and any decisions made. 
+Do not skip steps or combine them. Build in order.
+Ask me before making any architectural decisions not covered in CLAUDE.md.
