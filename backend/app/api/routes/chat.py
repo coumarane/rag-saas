@@ -52,6 +52,10 @@ class ConversationResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class CreateConversationRequest(BaseModel):
+    doc_id: uuid.UUID
+
+
 class MessageResponse(BaseModel):
     id: uuid.UUID
     role: str
@@ -204,14 +208,14 @@ async def chat_stream(
 
 @router.post("/conversations", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED)
 async def create_conversation(
-    doc_id: uuid.UUID,
+    body: CreateConversationRequest,
     db: AsyncSession = Depends(get_db),
 ) -> ConversationResponse:
-    """Create a new Conversation record linked to *doc_id*."""
+    """Create a new Conversation record linked to ``body.doc_id``."""
     conv = Conversation(
         id=uuid.uuid4(),
         tenant_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
-        doc_id=doc_id,
+        doc_id=body.doc_id,
     )
     db.add(conv)
     await db.commit()

@@ -1,7 +1,7 @@
 .PHONY: dev test build migrate stop clean logs shell
 
 dev:
-	docker compose up --build -d
+	docker compose up --build -d --wait
 	@echo "Services starting..."
 	@echo "API: http://localhost:8000"
 	@echo "Frontend: http://localhost:3000"

@@ -65,41 +65,40 @@ async def retrieve(
         sparse_search(qdrant_client, question, doc_id, settings.top_k_initial),
     )
 
+    # 3. Filter dense results by cosine similarity threshold BEFORE fusion.
+    #    RRF scores are always ~1/61 ≈ 0.016 — the threshold only makes sense
+    #    on raw cosine similarity values (0-1 range).
+    dense_filtered = [c for c in dense_results if c.score >= settings.score_threshold]
+
     logger.debug(
         "Search complete",
         doc_id=doc_id,
         dense_hits=len(dense_results),
+        dense_above_threshold=len(dense_filtered),
         sparse_hits=len(sparse_results),
-    )
-
-    # 3. RRF fusion
-    fused = reciprocal_rank_fusion(
-        dense_results,
-        sparse_results,
-        k=settings.rrf_k,
-    )
-
-    # 4. Filter by score threshold
-    filtered = [chunk for chunk in fused if chunk.score >= settings.score_threshold]
-
-    logger.debug(
-        "Score threshold filtering applied",
-        doc_id=doc_id,
-        before=len(fused),
-        after=len(filtered),
         threshold=settings.score_threshold,
     )
 
-    if not filtered:
+    if not dense_filtered and not sparse_results:
         logger.info(
-            "No chunks survived score threshold filter",
+            "No chunks passed score threshold",
             doc_id=doc_id,
             threshold=settings.score_threshold,
         )
         return []
 
+    # 4. RRF fusion (use threshold-filtered dense + all sparse results)
+    fused = reciprocal_rank_fusion(
+        dense_filtered,
+        sparse_results,
+        k=settings.rrf_k,
+    )
+
+    if not fused:
+        return []
+
     # 5. Rerank and return top-k
-    final_chunks = await rerank(question, filtered, top_k=settings.top_k_reranked)
+    final_chunks = await rerank(question, fused, top_k=settings.top_k_reranked)
 
     logger.info(
         "Retrieval pipeline complete",

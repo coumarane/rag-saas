@@ -2,7 +2,7 @@
 
 Batches texts in groups of 100, retries transient API errors with
 exponential back-off (up to 3 attempts), and returns a flat list of
-1536-dimensional vectors.
+vectors sized to ``settings.embedding_dims``.
 """
 
 from __future__ import annotations
@@ -34,12 +34,13 @@ async def _embed_batch(client: AsyncOpenAI, texts: list[str]) -> list[list[float
     """Embed a single batch of texts.  Retried up to 3 times with exponential
     back-off on any exception.
 
-    Returns a list of 1536-dim float vectors in the same order as *texts*.
+    Returns a list of float vectors in the same order as *texts*.
     """
     logger.debug("Embedding batch", batch_size=len(texts), model=settings.embedding_model)
     response = await client.embeddings.create(
         input=texts,
         model=settings.embedding_model,
+        dimensions=settings.embedding_dims,
     )
     # Sort by index to guarantee order (OpenAI preserves order but be safe).
     vectors = [item.embedding for item in sorted(response.data, key=lambda x: x.index)]
@@ -56,7 +57,7 @@ async def embed_chunks(texts: list[str]) -> list[list[float]]:
 
     Creates a single :class:`~openai.AsyncOpenAI` client for the call, splits
     the input into batches, embeds each batch concurrently, and returns a
-    flattened list of 1536-dim vectors.
+    flattened list of vectors sized to ``settings.embedding_dims``.
 
     Raises whatever the OpenAI SDK raises after exhausting retries.
     """

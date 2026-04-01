@@ -61,6 +61,7 @@ class TestEmbedBatch:
         client.embeddings.create.assert_called_once()
         call_kwargs = client.embeddings.create.call_args.kwargs
         assert call_kwargs.get("model") == settings.embedding_model
+        assert call_kwargs.get("dimensions") == settings.embedding_dims
         assert call_kwargs.get("input") == texts
 
     @pytest.mark.asyncio
