@@ -13,7 +13,13 @@ export function useDocuments() {
   return useQuery<DocumentResponse[]>({
     queryKey: DOCUMENTS_KEY,
     queryFn: getDocuments,
-    refetchInterval: 5000,
+    refetchInterval: (query) => {
+      const documents = query.state.data
+      const hasInFlightDocument = documents?.some(
+        (doc) => doc.status === 'pending' || doc.status === 'processing'
+      )
+      return hasInFlightDocument ? 5000 : false
+    },
   })
 }
 
